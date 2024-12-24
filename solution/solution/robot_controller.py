@@ -145,8 +145,9 @@ class RobotController(Node):
             self.get_logger().info("Turn completed, resuming forward movement")
 
 
+
     def destroy_node(self):
-    	msg = Twist()
+        msg = Twist()
         self.cmd_vel_publisher.publish(msg)
         self.get_logger().info(f"Stopping: {msg}")
         super().destroy_node()
