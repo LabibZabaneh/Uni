@@ -61,17 +61,17 @@ class RobotController(Node):
         
         self.odom_subscriber = self.create_subscription(
             Odometry,
-            'odom',
+            'robot1/odom',
             self.odom_callback,
             10, callback_group=timer_callback_group)
             
         self.scan_subscriber = self.create_subscription(
             LaserScan,
-            'scan',
+            'robot1/scan',
             self.scan_callback,
             10, callback_group=timer_callback_group)
             
-        self.cmd_vel_publisher = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.cmd_vel_publisher = self.create_publisher(Twist, 'robot1/cmd_vel', 10)
 
         self.timer_period = 0.1 # 100 milliseconds = 10 Hz
         self.timer = self.create_timer(self.timer_period, self.control_loop)
