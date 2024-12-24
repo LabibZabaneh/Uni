@@ -78,9 +78,14 @@ class RobotController(Node):
 	
     
     def odom_callback(self, msg):
-    	self.x = msg.pose.pose.position.x
-    	self.y = msg.pose.pose.position.y
-    	_, _, self.yaw = euler_from_quaternion(msg.pose.pose.orientation)
+        # Extract quaternion from the Odometry message
+        orientation = msg.pose.pose.orientation
+        quaternion = [orientation.x, orientation.y, orientation.z, orientation.w]
+        
+        # Convert quaternion to euler angles
+        _, _, self.yaw = euler_from_quaternion(quaternion)
+        self.x = msg.pose.pose.position.x
+        self.y = msg.pose.pose.position.y
     	
     	
     def scan_callback(self, msg):
