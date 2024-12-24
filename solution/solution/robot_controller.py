@@ -14,6 +14,8 @@ from tf_transformations import euler_from_quaternion
 import angles
 
 from enum import Enum
+import random
+import math
 
 LINEAR_VELOCITY  = 0.3 # Metres per second
 ANGULAR_VELOCITY = 0.5 # Radians per second
