@@ -8,6 +8,7 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 
 from geometry_msgs.msg import Twist, Pose
 from nav_msgs.msg import Odometry
+from sensor_msgs.msg import LaserScan
 
 from tf_transformations import euler_from_quaternion
 import angles
