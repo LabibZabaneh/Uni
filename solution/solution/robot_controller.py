@@ -3,12 +3,14 @@ import sys
 import rclpy
 from rclpy.node import Node
 from rclpy.signals import SignalHandlerOptions
-from rclpy.executors import ExternalShutdownException
+from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 
 from geometry_msgs.msg import Twist, Pose
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
+from auro_interfaces.msg import StringWithPose, Item, ItemList
+from auro_interfaces.srv import ItemRequest
 
 from tf_transformations import euler_from_quaternion
 import angles
@@ -41,6 +43,9 @@ class RobotController(Node):
         super().__init__('robot_controller')
         
         self.state = State.SEARCHING
+        
+        self.declare_parameter('robot_id', 'robot1')
+        self.robot_id = self.get_parameter('robot_id').value
 
         self.declare_parameter('x', 0.0)
         self.declare_parameter('y', 0.0)
@@ -53,26 +58,37 @@ class RobotController(Node):
         self.x = self.initial_x
         self.y = self.initial_y
         self.yaw = self.initial_yaw
+        self.items = ItemList()
         
         self.scan_triggered = [False] * 4
         self.previous_yaw = self.yaw
         self.turn_angle = 0.0
         self.turn_direction = TURN_LEFT
         
+        client_callback_group = MutuallyExclusiveCallbackGroup()
         timer_callback_group = MutuallyExclusiveCallbackGroup()
         
         self.odom_subscriber = self.create_subscription(
             Odometry,
-            'robot1/odom',
+            '/robot1/odom',
             self.odom_callback,
             10, callback_group=timer_callback_group)
             
         self.scan_subscriber = self.create_subscription(
             LaserScan,
-            'robot1/scan',
+            '/robot1/scan',
             self.scan_callback,
             10, callback_group=timer_callback_group)
-            
+
+        self.pick_up_service = self.create_client(ItemRequest, '/robot1/pick_up_item', callback_group=client_callback_group)
+
+        self.item_subscriber = self.create_subscription(
+            ItemList,
+            '/robot1/items',
+            self.item_callback,
+            10, callback_group=timer_callback_group
+        )
+
         self.cmd_vel_publisher = self.create_publisher(Twist, 'robot1/cmd_vel', 10)
 
         self.timer_period = 0.1 # 100 milliseconds = 10 Hz
@@ -102,12 +118,20 @@ class RobotController(Node):
         self.scan_triggered[SCAN_LEFT]  = min(left_ranges)  < SCAN_THRESHOLD
         self.scan_triggered[SCAN_BACK]  = min(back_ranges)  < SCAN_THRESHOLD
         self.scan_triggered[SCAN_RIGHT] = min(right_ranges) < SCAN_THRESHOLD
-        
+    
+
+    def item_callback(self, msg):
+        self.items = msg
+
 
     def control_loop(self):
         match self.state:
             case State.SEARCHING:
                 self.searching()
+            case State.COLLECTING:
+                self.collecting()
+            case State.DELIVERING:
+                self.delivering()
 
 
     def searching(self):
@@ -120,7 +144,7 @@ class RobotController(Node):
             self.turn()
         
         # Obstacle to the left or right
-        elif self.scan_triggered[SCAN_LEFT] or self.scan_triggered[SCAN_RIGHT]:
+        if self.scan_triggered[SCAN_LEFT] or self.scan_triggered[SCAN_RIGHT]:
             self.previous_yaw = self.yaw
             self.turn_angle = 45
             if self.scan_triggered[SCAN_LEFT] and self.scan_triggered[SCAN_RIGHT]:
@@ -134,12 +158,17 @@ class RobotController(Node):
                 self.get_logger().info(f"Obstacle to the right, turning left by {self.turn_angle:.2f} degrees")
             self.turn()
 
+        # Item detected
+        if len(self.items.data) > 0:
+            self.state = State.COLLECTING
+            return
+        
         # No obstacles: Move forward
-        else:
-            msg = Twist()
-            msg.linear.x = LINEAR_VELOCITY
-            self.cmd_vel_publisher.publish(msg)
-            self.get_logger().info("Moving forward")
+        msg = Twist()
+        msg.linear.x = LINEAR_VELOCITY
+        self.cmd_vel_publisher.publish(msg)
+        self.get_logger().info("Moving forward")
+
 
     def turn(self):
         # Execute turning
@@ -151,8 +180,43 @@ class RobotController(Node):
         yaw_difference = angles.normalize_angle(self.yaw - self.previous_yaw)
         if math.fabs(yaw_difference) >= math.radians(self.turn_angle):
             self.get_logger().info("Turn completed, resuming forward movement")
+    
+
+    def collecting(self):
+        # No items detected
+        if len(self.items.data) == 0:
+            self.state = State.SEARCHING
+            return
+        
+        item = self.items.data[0]
+        estimated_distance = 32.4 * float(item.diameter) ** -0.75
+        self.get_logger().info(f'Estimated distance {estimated_distance}')
+        
+        if estimated_distance <= 0.35:
+            rqt = ItemRequest.Request()
+            rqt.robot_id = self.robot_id
+            try:
+                future = self.pick_up_service.call_async(rqt)
+                self.executor.spin_until_future_complete(future)
+                response = future.result()
+                if response.success:
+                    self.get_logger().info('Item picked up.')
+                    self.state = State.DELIVERING
+                    self.items.data = []
+                else:
+                    self.get_logger().info('Unable to pick up item: ' + response.message)
+                except Exception as e:
+                    self.get_logger().info('Exception ' + e) 
+
+                        msg = Twist()
+
+        msg.linear.x = 0.25 * estimated_distance
+        msg.angular.z = item.x / 320.0
+        self.cmd_vel_publisher.publish(msg)  
 
 
+    def delivering(self):
+        self.get_logger().info('State Delivering')
 
     def destroy_node(self):
         msg = Twist()
@@ -164,6 +228,9 @@ class RobotController(Node):
 def main(args=None):
     rclpy.init(args = args, signal_handler_options = SignalHandlerOptions.NO)
     node = RobotController()
+    
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
 
     try:
         rclpy.spin(node)
