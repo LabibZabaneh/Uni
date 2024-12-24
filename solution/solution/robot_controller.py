@@ -98,12 +98,11 @@ class RobotController(Node):
 
     def control_loop(self):
         match self.state:
-        	case State.SEARCHING:
-            	self.searching()
+            case State.SEARCHING:
+                self.searching()
+                
 
-    
     def searching(self):
-
         # Obstacle in front
         if self.scan_triggered[SCAN_FRONT]:
             self.previous_yaw = self.yaw
