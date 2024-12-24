@@ -100,7 +100,7 @@ class RobotController(Node):
         match self.state:
             case State.SEARCHING:
                 self.searching()
-                
+
 
     def searching(self):
         # Obstacle in front
@@ -153,7 +153,6 @@ class RobotController(Node):
 
 
 def main(args=None):
-
     rclpy.init(args = args, signal_handler_options = SignalHandlerOptions.NO)
     node = RobotController()
 
