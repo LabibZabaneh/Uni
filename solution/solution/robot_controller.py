@@ -70,26 +70,27 @@ class RobotController(Node):
         
         self.odom_subscriber = self.create_subscription(
             Odometry,
-            '/robot1/odom',
+            f'/{self.robot_id}/odom',
             self.odom_callback,
             10, callback_group=timer_callback_group)
             
         self.scan_subscriber = self.create_subscription(
             LaserScan,
-            '/robot1/scan',
+            f'/{self.robot_id}/scan',
             self.scan_callback,
             10, callback_group=timer_callback_group)
 
-        self.pick_up_service = self.create_client(ItemRequest, '/robot1/pick_up_item', callback_group=client_callback_group)
+        self.pick_up_service = self.create_client(ItemRequest, f'/{self.robot_id}/pick_up_item', callback_group=client_callback_group)
+        self.offload_service = self.create_client(ItemRequest, f'/{self.robot_id}/offload_item', callback_group=client_callback_group)
 
         self.item_subscriber = self.create_subscription(
             ItemList,
-            '/robot1/items',
+            f'/{self.robot_id}/items',
             self.item_callback,
             10, callback_group=timer_callback_group
         )
 
-        self.cmd_vel_publisher = self.create_publisher(Twist, 'robot1/cmd_vel', 10)
+        self.cmd_vel_publisher = self.create_publisher(Twist, f'/{self.robot_id}/cmd_vel', 10)
 
         self.timer_period = 0.1 # 100 milliseconds = 10 Hz
         self.timer = self.create_timer(self.timer_period, self.control_loop)
@@ -206,9 +207,7 @@ class RobotController(Node):
                 else:
                     self.get_logger().info('Unable to pick up item: ' + response.message)
                 except Exception as e:
-                    self.get_logger().info('Exception ' + e) 
-
-                        msg = Twist()
+                    self.get_logger().info('Exception ' + e)
 
         msg.linear.x = 0.25 * estimated_distance
         msg.angular.z = item.x / 320.0
@@ -233,7 +232,7 @@ def main(args=None):
     executor.add_node(node)
 
     try:
-        rclpy.spin(node)
+        executor.spin(node)
     except KeyboardInterrupt:
         pass
     except ExternalShutdownException:
